@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>像素取色器</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 20px;
+      background: linear-gradient(to right, #ece9e6, #ffffff);
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      color: #333;
+    }
+
+    h1 {
+      text-align: center;
+      margin-bottom: 30px;
+      color: #444;
+      font-size: 28px;
+    }
+
+    .uploader {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+
+    .custom-file-upload {
+      display: inline-block;
+      padding: 10px 20px;
+      background-color: #0b0b0b;
+      color: white;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+
+    .custom-file-upload:hover {
+      background-color: #2a2a2a;
+    }
+
+    #upload {
+      display: none;
+    }
+
+    .main-container {
+      display: flex;
+      justify-content: center;
+      gap: 30px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+
+    .color-display {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      width: 260px;
+    }
+
+    .color-card {
+      background: #fff;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 6px 12px rgba(0, 0, 0, 0.1);
+    }
+
+    .color-card h3 {
+      margin: 0 0 10px;
+      font-size: 16px;
+      color: #666;
+    }
+
+    .color-box {
+      width: 40px;
+      height: 40px;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+      display: inline-block;
+      vertical-align: middle;
+      flex-shrink: 0;
+    }
+
+    .color-code {
+      font-family: monospace;
+      font-size: 14px;
+      color: #555;
+      word-break: break-word;
+      margin-left: 10px;
+    }
+
+    .saved-colors {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
+    .saved-color {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 5px 10px;
+      background: #f8f8f8;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    }
+
+    .color-info {
+      display: flex;
+      align-items: center;
+      flex: 1;
+    }
+
+    .color-info .color-box {
+      width: 30px;
+      height: 30px;
+    }
+
+    .color-actions button {
+      margin-left: 5px;
+      border: none;
+      padding: 4px 8px;
+      font-size: 12px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    .copy-btn {
+      background-color: #232323;
+      color: white;
+    }
+
+    .delete-btn {
+      background-color: #757575;
+      color: white;
+    }
+
+    #image-container {
+      flex: 1;
+      max-width: 40%;
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 6px 12px rgba(0, 0, 0, 0.1);
+      overflow: hidden;
+    }
+
+    canvas {
+      width: 100%;
+      height: auto;
+      display: block;
+      border-bottom: 1px solid #eee;
+      cursor: crosshair;
+    }
+  </style>
+</head>
+<body>
+  <div class="uploader">
+    <label for="upload" class="custom-file-upload">选择图片</label>
+    <input type="file" id="upload" accept="image/*" />
+  </div>
+
+  <div class="main-container">
+    <div class="color-display">
+      <div class="color-card">
+        <h3>当前像素色值</h3>
+        <div style="display: flex; align-items: center;">
+          <div id="hover-color-box" class="color-box"></div>
+          <div id="hover-color-code" class="color-code"></div>
+        </div>
+      </div>
+
+      <div class="color-card">
+        <h3>选中像素色值</h3>
+        <div style="display: flex; align-items: center;">
+          <div id="selected-color-box" class="color-box"></div>
+          <div id="selected-color-code" class="color-code"></div>
+        </div>
+      </div>
+
+      <div class="color-card">
+        <h3>已保存色值 (最多30个)</h3>
+        <div class="saved-colors" id="saved-colors"></div>
+      </div>
+    </div>
+
+    <div id="image-container">
+      <canvas id="canvas"></canvas>
+      <img id="uploaded-image" src="" alt="上传的图片" hidden />
+    </div>
+  </div>
+
+  <script>
+    const uploadInput = document.getElementById("upload");
+    const imageElement = document.getElementById("uploaded-image");
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+
+    const hoverColorBox = document.getElementById("hover-color-box");
+    const hoverColorCode = document.getElementById("hover-color-code");
+    const selectedColorBox = document.getElementById("selected-color-box");
+    const selectedColorCode = document.getElementById("selected-color-code");
+    const savedColorsContainer = document.getElementById("saved-colors");
+
+    let savedColors = [];
+
+    uploadInput.addEventListener("change", (event) => {
+      const file = event.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          imageElement.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+
+    imageElement.onload = () => {
+      canvas.width = imageElement.naturalWidth;
+      canvas.height = imageElement.naturalHeight;
+      ctx.drawImage(imageElement, 0, 0);
+      imageElement.hidden = true;
+    };
+
+    function getActualCoordinates(event) {
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      const x = (event.clientX - rect.left) * scaleX;
+      const y = (event.clientY - rect.top) * scaleY;
+      return { x, y };
+    }
+
+    canvas.addEventListener("mousemove", (event) => {
+      const { x, y } = getActualCoordinates(event);
+      const pixel = ctx.getImageData(x, y, 1, 1).data;
+      const rgba = `rgba(${pixel[0]}, ${pixel[1]}, ${pixel[2]}, ${(pixel[3] / 255).toFixed(2)})`;
+      hoverColorBox.style.backgroundColor = rgba;
+      hoverColorCode.textContent = rgba;
+    });
+
+    canvas.addEventListener("click", (event) => {
+      const { x, y } = getActualCoordinates(event);
+      const pixel = ctx.getImageData(x, y, 1, 1).data;
+      const rgba = `rgba(${pixel[0]}, ${pixel[1]}, ${pixel[2]}, ${(pixel[3] / 255).toFixed(2)})`;
+      selectedColorBox.style.backgroundColor = rgba;
+      selectedColorCode.textContent = rgba;
+
+      addSavedColor(rgba);
+    });
+
+    function addSavedColor(color) {
+  if (savedColors[0] === color) return; // 如果与上一次保存的颜色相同，则不添加
+  savedColors.unshift(color); // 新颜色添加到顶部
+  if (savedColors.length > 30) savedColors.pop(); // 限制最多30个
+  renderSavedColors();
+}
+
+
+    function renderSavedColors() {
+      savedColorsContainer.innerHTML = "";
+      savedColors.forEach((color, index) => {
+        const colorItem = document.createElement("div");
+        colorItem.className = "saved-color";
+
+        const info = document.createElement("div");
+        info.className = "color-info";
+
+        const box = document.createElement("div");
+        box.className = "color-box";
+        box.style.backgroundColor = color;
+
+        const code = document.createElement("div");
+        code.className = "color-code";
+        code.textContent = color;
+
+        info.appendChild(box);
+        info.appendChild(code);
+
+        const actions = document.createElement("div");
+        actions.className = "color-actions";
+
+        const copyBtn = document.createElement("button");
+        copyBtn.textContent = "复制";
+        copyBtn.className = "copy-btn";
+        copyBtn.onclick = () => navigator.clipboard.writeText(color);
+
+        const deleteBtn = document.createElement("button");
+        deleteBtn.textContent = "删除";
+        deleteBtn.className = "delete-btn";
+        deleteBtn.onclick = () => {
+          savedColors.splice(index, 1);
+          renderSavedColors();
+        };
+
+        actions.appendChild(copyBtn);
+        actions.appendChild(deleteBtn);
+
+        colorItem.appendChild(info);
+        colorItem.appendChild(actions);
+
+        savedColorsContainer.appendChild(colorItem);
+      });
+    }
+  </script>
+</body>
+</html>

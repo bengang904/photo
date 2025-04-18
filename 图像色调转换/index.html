@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>🎨 图像色调转换</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      font-family: "Segoe UI", sans-serif;
+      background: linear-gradient(135deg, #e0eafc, #cfdef3);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+
+    .container {
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 15px 30px rgba(0, 0, 0, 0.1);
+      padding: 30px 40px;
+      max-width: 600px;
+      width: 100%;
+      text-align: center;
+      margin: 20px;
+    }
+
+    h2 {
+      color: #333;
+      margin-bottom: 25px;
+    }
+
+    input[type="file"] {
+      display: none;
+    }
+
+    .custom-file-upload {
+      display: inline-block;
+      padding: 10px 20px;
+      background: linear-gradient(to right, #667eea, #764ba2);
+      color: white;
+      font-weight: bold;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: 0.3s ease;
+      margin-bottom: 20px;
+    }
+
+    .custom-file-upload:hover {
+      opacity: 0.9;
+      transform: scale(1.03);
+    }
+
+    .options label {
+      display: flex;
+      align-items: center;
+      background: #f3f7fa;
+      border: 1px solid #ccd6dd;
+      border-radius: 10px;
+      padding: 10px 15px;
+      margin: 8px 0;
+      cursor: pointer;
+      transition: background 0.3s ease;
+    }
+
+    .options label:hover {
+      background: #e9f1f7;
+    }
+
+    .options input[type="radio"] {
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      border: 2px solid #4facfe;
+      border-radius: 50%;
+      margin-right: 12px;
+      position: relative;
+      transition: 0.2s ease-in-out;
+    }
+
+    .options input[type="radio"]:checked::before {
+      content: "";
+      width: 10px;
+      height: 10px;
+      background: #4facfe;
+      border-radius: 50%;
+      position: absolute;
+      top: 3px;
+      left: 3px;
+    }
+
+    .buttons {
+      display: flex;
+      justify-content: center;
+      gap: 15px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      background: linear-gradient(to right, #4facfe, #00bfc9);
+      border: none;
+      color: white;
+      padding: 12px 24px;
+      font-size: 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    button:hover {
+      opacity: 0.9;
+      transform: scale(1.03);
+    }
+
+    canvas {
+      display: block;
+      margin: 25px auto 0 auto;
+      border-radius: 10px;
+      border: 1px solid #ccc;
+      max-width: 100%;
+    }
+    .reduction {
+        background: linear-gradient(to right, #4f63fe, #493ebf);
+    }
+    .download {
+        background: linear-gradient(to right, #eab149, #fe7700);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>🎨 图像色调转换</h2>
+
+    <!-- 文件选择器 -->
+    <label class="custom-file-upload">
+      📁 选择图片
+      <input type="file" id="upload" accept="image/*">
+    </label><br>
+
+    <!-- 色调规则选择 -->
+    <div class="options" id="optionsForm">
+      <label><input type="radio" name="rule" value="R>G"> 让 <strong>红调</strong>的部分变<strong>绿</strong></label>
+      <label><input type="radio" name="rule" value="R>B"> 让 <strong>红调</strong>的部分变<strong>蓝</strong></label>
+      <label><input type="radio" name="rule" value="G>B"> 让 <strong>绿调</strong>的部分变<strong>蓝</strong></label>
+      <label><input type="radio" name="rule" value="R<L"> 让 <strong>绿调</strong>的部分变<strong>红</strong></label>
+      <label><input type="radio" name="rule" value="R<B"> 让 <strong>蓝调</strong>的部分变<strong>红</strong></label>
+      <label><input type="radio" name="rule" value="G<B"> 让 <strong>蓝调</strong>的部分变<strong>绿</strong></label>
+    </div>
+
+    <!-- 操作按钮 -->
+    <div class="buttons">
+      <button onclick="processImage()">✨ 处理确认</button>
+      <button onclick="restoreImage()" class="reduction">🔄 还原图像</button>
+      <button onclick="downloadImage()" class="download">📥 下载图像</button>
+    </div>
+
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <script>
+    const upload = document.getElementById("upload");
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+    let image = new Image();
+    let originalImageData = null;
+
+    upload.addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        image.src = event.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    image.onload = function () {
+      canvas.width = image.width;
+      canvas.height = image.height;
+      ctx.drawImage(image, 0, 0);
+      originalImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    };
+
+    function processImage() {
+      if (!originalImageData) {
+        alert("请先上传一张图片！");
+        return;
+      }
+
+      const rule = document.querySelector('input[name="rule"]:checked');
+      if (!rule) {
+        alert("请选择一个处理规则！");
+        return;
+      }
+
+      // 拷贝一份原始数据处理
+      const imgData = new ImageData(new Uint8ClampedArray(originalImageData.data), canvas.width, canvas.height);
+      const data = imgData.data;
+
+      for (let i = 0; i < data.length; i += 4) {
+        let R = data[i], G = data[i + 1], B = data[i + 2];
+
+        switch (rule.value) {
+          case "R>G":
+            if (R > G) [data[i], data[i + 1]] = [G, R];
+            break;
+          case "R>B":
+            if (R > B) [data[i], data[i + 2]] = [B, R];
+            break;
+          case "G>B":
+            if (G > B) [data[i + 1], data[i + 2]] = [B, G];
+            break;
+          case "R<L":
+            if (R < G) [data[i], data[i + 1]] = [G, R];
+            break;
+          case "R<B":
+            if (R < B) [data[i], data[i + 2]] = [B, R];
+            break;
+          case "G<B":
+            if (G < B) [data[i + 1], data[i + 2]] = [B, G];
+            break;
+        }
+      }
+
+      ctx.putImageData(imgData, 0, 0);
+    }
+
+    function restoreImage() {
+      if (originalImageData) {
+        ctx.putImageData(originalImageData, 0, 0);
+      } else {
+        alert("请先上传一张图片！");
+      }
+    }
+
+    function downloadImage() {
+      if (!originalImageData) {
+        alert("请先上传并处理一张图片！");
+        return;
+      }
+
+      const dataURL = canvas.toDataURL("image/png");
+      const link = document.createElement("a");
+      link.href = dataURL;
+      link.download = "processed_image.png";
+      link.click();
+    }
+  </script>
+</body>
+</html>

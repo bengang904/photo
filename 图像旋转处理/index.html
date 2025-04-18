@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图像旋转工具</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            flex-direction: column;
+        }
+
+        .container {
+            background: #ffffff;
+            border-radius: 15px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            text-align: center;
+            width: 400px;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        label {
+            display: inline-block;
+            background-color: #007BFF;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-bottom: 20px;
+        }
+
+        .image-wrapper {
+            max-width: 100%;
+            margin-bottom: 20px;
+        }
+
+        .image-container {
+            width: 100%;
+            overflow: hidden;
+            margin: 0 auto;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        img {
+            max-width: 100%;
+            transition: transform 0.3s ease;
+        }
+
+        .slider-wrapper {
+            width: 100%;
+            margin-bottom: 20px;
+        }
+
+        .slider {
+            width: 100%;
+            cursor: pointer;
+        }
+
+        .slider-value {
+            font-size: 16px;
+            font-weight: bold;
+            color: #333;
+            margin-top: 10px;
+        }
+
+        .angle-input {
+            width: 60px;
+            padding: 5px;
+            font-size: 16px;
+            text-align: center;
+            margin-top: 10px;
+        }
+
+        .download-btn {
+            background-color: #28a745;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            border: none;
+        }
+
+        .download-btn:disabled {
+            background-color: #d6d6d6;
+            cursor: not-allowed;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+    </style>
+</head>
+<body>
+    <div class="container">
+        <label for="fileInput">上传图像</label>
+        <input type="file" id="fileInput" accept="image/*">
+
+        <div class="image-wrapper hidden" id="imageWrapper">
+            <div class="image-container">
+                <img id="image" src="" alt="图片预览">
+            </div>
+        </div>
+
+        <div class="slider-wrapper hidden" id="sliderWrapper">
+            <input type="range" id="slider" class="slider" min="0" max="360" value="0">
+            <div class="slider-value" id="sliderValue">
+                旋转角度：
+                <input type="number" id="angleInput" class="angle-input" value="0" min="0" max="360">
+                度
+            </div>
+        </div>
+
+        <button id="downloadBtn" class="download-btn hidden" disabled>下载图像</button>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('fileInput');
+        const imageWrapper = document.getElementById('imageWrapper');
+        const sliderWrapper = document.getElementById('sliderWrapper');
+        const image = document.getElementById('image');
+        const slider = document.getElementById('slider');
+        const sliderValue = document.getElementById('sliderValue');
+        const angleInput = document.getElementById('angleInput');
+        const downloadBtn = document.getElementById('downloadBtn');
+
+        let currentRotation = 0;
+        let imageURL = null;
+
+        fileInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    imageURL = event.target.result;
+                    image.src = imageURL;
+                    imageWrapper.classList.remove('hidden');
+                    sliderWrapper.classList.remove('hidden');
+                    downloadBtn.classList.remove('hidden');
+                    currentRotation = 0;
+                    slider.value = 0;
+                    angleInput.value = 0;
+                    downloadBtn.disabled = false;
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        slider.addEventListener('input', function() {
+            currentRotation = slider.value;
+            angleInput.value = currentRotation;
+            image.style.transform = `rotate(${currentRotation}deg)`;
+        });
+
+        angleInput.addEventListener('input', function() {
+            currentRotation = angleInput.value;
+            slider.value = currentRotation;
+            image.style.transform = `rotate(${currentRotation}deg)`;
+        });
+
+        downloadBtn.addEventListener('click', function() {
+            if (imageURL) {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                const img = new Image();
+                img.src = imageURL;
+
+                img.onload = function() {
+                    const width = img.width;
+                    const height = img.height;
+                    const angle = (currentRotation * Math.PI) / 180;
+
+                    // 计算旋转后的图像尺寸
+                    const sin = Math.abs(Math.sin(angle));
+                    const cos = Math.abs(Math.cos(angle));
+                    const newWidth = Math.floor(width * cos + height * sin);
+                    const newHeight = Math.floor(height * cos + width * sin);
+
+                    // 设置canvas的大小
+                    canvas.width = newWidth;
+                    canvas.height = newHeight;
+
+                    // 在canvas中心旋转绘制图像
+                    ctx.translate(newWidth / 2, newHeight / 2);
+                    ctx.rotate(angle);
+                    ctx.drawImage(img, -width / 2, -height / 2);
+
+                    // 获取裁剪后的图像区域
+                    const imgData = ctx.getImageData(0, 0, newWidth, newHeight);
+                    const croppedCanvas = document.createElement('canvas');
+                    const croppedCtx = croppedCanvas.getContext('2d');
+
+                    // 找到最小矩形边界
+                    const data = imgData.data;
+                    let minX = newWidth, minY = newHeight, maxX = 0, maxY = 0;
+                    for (let i = 0; i < data.length; i += 4) {
+                        const x = (i / 4) % newWidth;
+                        const y = Math.floor(i / 4 / newWidth);
+
+                        if (data[i + 3] > 0) { // 如果是非透明像素
+                            minX = Math.min(minX, x);
+                            minY = Math.min(minY, y);
+                            maxX = Math.max(maxX, x);
+                            maxY = Math.max(maxY, y);
+                        }
+                    }
+
+                    // 裁剪图像区域
+                    const croppedWidth = maxX - minX + 1;
+                    const croppedHeight = maxY - minY + 1;
+
+                    croppedCanvas.width = croppedWidth;
+                    croppedCanvas.height = croppedHeight;
+                    croppedCtx.putImageData(imgData, -minX, -minY);
+
+                    // 导出裁剪后的图像
+                    const rotatedImage = croppedCanvas.toDataURL('image/png');
+                    const link = document.createElement('a');
+                    link.href = rotatedImage;
+                    link.download = 'rotated_and_cropped_image.png';
+                    link.click();
+                };
+            }
+        });
+    </script>
+</body>
+</html>

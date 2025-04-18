@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>图像模糊压缩</title>
+  <style>
+    body {
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+      background-color: #252525;
+    }
+    div {
+      width: 500px;
+      background-color: rgb(255, 255, 255);
+      border-radius: 3px;
+      text-align: center;
+      padding: 25px 0px;
+    }
+    canvas {
+      border: 2px solid #000;
+    }
+    img {
+      max-width: 100%;
+      max-height: 300px;
+      margin-top: 15px; 
+      margin-bottom: 15px;
+    }
+    button {
+      margin-top: 15px; 
+      border-radius: 8px; 
+      background-color: rgb(45, 187, 156); 
+      border: none;
+      padding: 5px 10px;
+      cursor: pointer;
+      color: #fff;
+      font-size: 16px;
+      font-weight: bold;
+    }
+  </style>
+  <!-- 引入 StackBlur 库 -->
+  <script src="https://cdn.jsdelivr.net/npm/stackblur-canvas@1.4.1/dist/stackblur.min.js"></script>
+</head>
+<body>
+  <div>
+    <input type="file" id="imageInput" accept="image/*">
+    <br>
+    <img id="previewImage">
+    <br>
+    <label for="blurRange">模糊程度: <span id="blurValueDisplay">0</span></label>
+    <input type="range" id="blurRange" min="0" max="20" step="1" value="0" oninput="debouncedUpdateBlur()">
+    <br>
+    <button onclick="downloadImage()">下载</button>
+  </div>
+
+  <script>
+    let inputImage, previewImage = document.getElementById('previewImage');
+    let blurRangeValue = 0;
+    let originalImage = new Image();
+    let canvas = document.createElement('canvas');
+    let ctx = canvas.getContext('2d');
+    let isUpdating = false;
+
+    document.getElementById('imageInput').addEventListener('change', handleImage);
+    document.getElementById('blurRange').addEventListener('input', debouncedUpdateBlur);
+
+    function handleImage(e) {
+      inputImage = e.target.files[0];
+      if (!inputImage) return;
+
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        originalImage.src = event.target.result;
+        previewImage.src = event.target.result;
+        originalImage.onload = () => {
+          canvas.width = originalImage.naturalWidth;
+          canvas.height = originalImage.naturalHeight;
+          ctx.drawImage(originalImage, 0, 0);
+        };
+      };
+      reader.readAsDataURL(inputImage);
+    }
+
+    function updateBlur() {
+      // 更新模糊程度
+      blurRangeValue = document.getElementById('blurRange').value;
+      document.getElementById('blurValueDisplay').textContent = blurRangeValue;
+
+      // 使用 StackBlur 对 canvas 图像进行模糊处理
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(originalImage, 0, 0, canvas.width, canvas.height);
+      StackBlur.canvasRGB(canvas, 0, 0, canvas.width, canvas.height, blurRangeValue);
+
+      // 更新预览图片
+      previewImage.src = canvas.toDataURL("image/png");
+    }
+
+    function debouncedUpdateBlur() {
+      if (isUpdating) return; // 防止频繁触发更新
+      isUpdating = true;
+      requestAnimationFrame(() => {
+        updateBlur();
+        isUpdating = false;
+      });
+    }
+
+    function downloadImage() {
+      if (!originalImage.src) {
+        alert('请先上传图片');
+        return;
+      }
+
+      if (blurRangeValue === '0' || blurRangeValue === 0) {
+        alert('请先选择要对图像处理的模糊程度');
+        return;
+      }
+
+      // 使用 StackBlur 对 canvas 图像进行模糊处理
+      StackBlur.canvasRGB(canvas, 0, 0, canvas.width, canvas.height, blurRangeValue);
+
+      // 将模糊后的图像下载
+      const dataUrl = canvas.toDataURL("image/png");
+      const a = document.createElement('a');
+      a.href = dataUrl;
+      a.download = '模糊.png';
+      a.click();
+    }
+  </script>
+</body>
+</html>

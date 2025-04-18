@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图像透明度处理</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #f4f7fc;
+            color: #333;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            flex-direction: column;
+            padding: 20px;
+        }
+        h1 {
+            font-size: 2em;
+            margin-bottom: 20px;
+            color: #2c3e50;
+        }
+        #image-container {
+            margin-top: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+            max-width: 100%;
+            max-height: 400px;
+            border-radius: 10px;
+        }
+        #controls {
+            margin-top: 30px;
+            width: 100%;
+            text-align: center;
+        }
+        .button {
+            padding: 12px 24px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 30px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .button:hover {
+            background-color: #2980b9;
+        }
+        .slider-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-top: 20px;
+            display: none; /* 隐藏滑动条，直到图像上传 */
+        }
+        input[type="range"] {
+            width: 300px;
+            max-width: 70%; 
+            height: 8px;
+            border-radius: 5px;
+            background-color: #dfe6e9;
+            appearance: none;
+            outline: none;
+            transition: background-color 0.3s;
+        }
+        input[type="range"]:hover {
+            background-color: #b2bec3;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background-color: #3498db;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        input[type="range"]:active::-webkit-slider-thumb {
+            background-color: #2980b9;
+        }
+        .opacity-value {
+            margin-top: 10px;
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #34495e;
+        }
+
+        /* 精美的文件选择按钮 */
+        #file-input {
+            padding: 15px 25px;
+            font-size: 16px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            margin-bottom: 20px;
+        }
+
+        #file-input:hover {
+            background-color: #2980b9;
+        }
+
+        #file-input:focus {
+            outline: none;
+        }
+
+        /* 按钮样式 */
+        .button {
+            padding: 12px 24px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 30px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        .button:hover {
+            background-color: #2980b9;
+        }
+    </style>
+</head>
+<body>
+    <h1>图像透明度处理</h1>
+    <input type="file" id="file-input" accept="image/*">
+    <div id="image-container">
+        <canvas id="canvas"></canvas>
+    </div>
+    <div id="controls">
+        <div class="slider-container" id="slider-container">
+            <input type="range" id="opacity-slider" min="0.1" max="1" step="0.01" value="1">
+            <p class="opacity-value">不透明度: <span id="opacity-value">1</span></p>
+        </div>
+        <button class="button" id="download-btn" style="display:none;">下载图像</button>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('file-input');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const opacitySlider = document.getElementById('opacity-slider');
+        const opacityValue = document.getElementById('opacity-value');
+        const downloadBtn = document.getElementById('download-btn');
+        const sliderContainer = document.getElementById('slider-container');
+        
+        let image = new Image();
+        let originalImageData = null; // 用于保存原始图像数据
+
+        // 处理图像上传
+        fileInput.addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    image.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        // 图像加载完成后绘制到 Canvas
+        image.onload = function() {
+            canvas.width = image.width;
+            canvas.height = image.height;
+            ctx.drawImage(image, 0, 0);
+            originalImageData = ctx.getImageData(0, 0, canvas.width, canvas.height); // 保存原始图像数据
+            updateImageOpacity(opacitySlider.value); // 初始化透明度
+            downloadBtn.style.display = 'inline-block'; // 显示下载按钮
+            sliderContainer.style.display = 'block'; // 显示拖动条
+        };
+
+        // 更新图像透明度（图像内部处理）
+        function updateImageOpacity(opacity) {
+            const imageData = new ImageData(new Uint8ClampedArray(originalImageData.data), canvas.width, canvas.height);
+            const data = imageData.data;
+
+            for (let i = 0; i < data.length; i += 4) {
+                if (data[i + 3] !== 0) { // 仅更新 alpha 大于 0 的像素
+                    data[i + 3] = opacity * 255; // 设置 alpha 通道（透明度）
+                }
+            }
+
+            ctx.putImageData(imageData, 0, 0);
+        }
+
+        // 监听透明度滑动条变化
+        opacitySlider.addEventListener('input', function() {
+            const opacity = opacitySlider.value;
+            updateImageOpacity(opacity);
+            opacityValue.textContent = opacity;
+        });
+
+        // 下载按钮功能
+        downloadBtn.addEventListener('click', function() {
+            const dataUrl = canvas.toDataURL('image/png');
+            const link = document.createElement('a');
+            link.href = dataUrl;
+            link.download = 'modified_image.png'; // 设置下载文件名
+            link.click();
+        });
+    </script>
+</body>
+</html>

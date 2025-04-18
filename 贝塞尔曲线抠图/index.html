@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>贝塞尔曲线抠图</title>
+  <style>
+    body {
+      margin: 0;
+      background: #1e1e1e;
+      color: #eee;
+      font-family: sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    canvas {
+      border: 1px solid #555;
+      margin-top: 10px;
+      cursor: crosshair;
+      background: #222;
+    }
+    .toolbar {
+      margin-top: 10px;
+    }
+    button, input[type="file"] {
+      margin-right: 10px;
+      padding: 6px 12px;
+      background: #444;
+      border: none;
+      color: white;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #666;
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <input type="file" id="upload" />
+    <button onclick="togglePathClosed()">闭合/打开曲线</button>
+    <button onclick="undo()">撤回上一步</button>
+    <button onclick="exportMasked()">导出图像片状区域</button>
+  </div>
+  <canvas id="canvas" width="800" height="600"></canvas>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    let image = null;
+    let imageDisplay = { scale: 1, offsetX: 0, offsetY: 0 };
+    let points = [];
+    let isDragging = false;
+    let dragType = null;
+    let dragIndex = -1;
+    let pathClosed = false;
+    let ctrlKey = false;
+    let shiftKey = false;
+    let history = [];
+    let isDraggingImage = false;
+    let lastMousePos = { x: 0, y: 0 };
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Control') ctrlKey = true;
+      if (e.key === 'Shift') shiftKey = true;
+      if (e.key === 'z' && ctrlKey) undo();
+    });
+
+    document.addEventListener('keyup', (e) => {
+      if (e.key === 'Control') ctrlKey = false;
+      if (e.key === 'Shift') shiftKey = false;
+    });
+
+    document.getElementById('upload').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      reader.onload = function (event) {
+        const img = new Image();
+        img.onload = function () {
+          image = img;
+          const scaleX = canvas.width / img.width;
+          const scaleY = canvas.height / img.height;
+          imageDisplay.scale = Math.min(scaleX, scaleY);
+          const displayWidth = img.width * imageDisplay.scale;
+          const displayHeight = img.height * imageDisplay.scale;
+          imageDisplay.offsetX = (canvas.width - displayWidth) / 2;
+          imageDisplay.offsetY = (canvas.height - displayHeight) / 2;
+          draw();
+        };
+        img.src = event.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    canvas.addEventListener('mousedown', (e) => {
+      const pos = getMousePos(e);
+      if (e.button === 1) {
+        isDraggingImage = true;
+        lastMousePos = pos;
+        return;
+      }
+      if (e.altKey) {
+        let hit = hitTest(pos);
+        if (hit && hit.type === 'anchor') {
+          points[hit.index].symmetric = !points[hit.index].symmetric;
+          draw();
+        }
+        return;
+      }
+      if (shiftKey) {
+        let hit = hitTest(pos);
+        if (hit) {
+          const removed = points.splice(hit.index, 1)[0];
+          history.push({ action: 'remove', point: removed, index: hit.index });
+          draw();
+        }
+        return;
+      }
+      let hit = hitTest(pos);
+      if (hit) {
+        isDragging = true;
+        dragIndex = hit.index;
+        dragType = hit.type;
+        return;
+      }
+      if (ctrlKey && points.length > 1) {
+        addControlPointBetween(e);
+        return;
+      }
+      if (!pathClosed) {
+        const point = {
+          anchor: pos,
+          handle1: { x: pos.x, y: pos.y },
+          handle2: { x: pos.x, y: pos.y },
+          symmetric: true
+        };
+        points.push(point);
+        history.push({ action: 'add', point, index: points.length - 1 });
+        dragIndex = points.length - 1;
+        dragType = 'handle2';
+        isDragging = true;
+        draw();
+      }
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+      const pos = getMousePos(e);
+      if (isDraggingImage) {
+        const dx = pos.x - lastMousePos.x;
+        const dy = pos.y - lastMousePos.y;
+        imageDisplay.offsetX += dx;
+        imageDisplay.offsetY += dy;
+        for (let pt of points) {
+          pt.anchor.x += dx;
+          pt.anchor.y += dy;
+          pt.handle1.x += dx;
+          pt.handle1.y += dy;
+          pt.handle2.x += dx;
+          pt.handle2.y += dy;
+        }
+        lastMousePos = pos;
+        draw();
+        return;
+      }
+      if (!isDragging) return;
+      let pt = points[dragIndex];
+      if (dragType === 'anchor') {
+        const dx = pos.x - pt.anchor.x;
+        const dy = pos.y - pt.anchor.y;
+        pt.anchor = pos;
+        pt.handle1.x += dx;
+        pt.handle1.y += dy;
+        pt.handle2.x += dx;
+        pt.handle2.y += dy;
+      } else {
+        pt[dragType] = pos;
+        if (pt.symmetric && !shiftKey) {
+          const h = dragType === 'handle1' ? 'handle2' : 'handle1';
+          const dx = pos.x - pt.anchor.x;
+          const dy = pos.y - pt.anchor.y;
+          pt[h] = {
+            x: pt.anchor.x - dx,
+            y: pt.anchor.y - dy
+          };
+        } else {
+          pt.symmetric = false;
+        }
+      }
+      draw();
+    });
+
+    canvas.addEventListener('mouseup', () => {
+      isDragging = false;
+      dragType = null;
+      dragIndex = -1;
+      isDraggingImage = false;
+    });
+
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      if (!image) return;
+      const { offsetX, offsetY } = e;
+      const zoom = e.deltaY < 0 ? 1.1 : 0.9;
+      const oldScale = imageDisplay.scale;
+      const newScale = oldScale * zoom;
+      const scaleFactor = newScale / oldScale;
+      const mx = offsetX;
+      const my = offsetY;
+      imageDisplay.offsetX = mx - (mx - imageDisplay.offsetX) * scaleFactor;
+      imageDisplay.offsetY = my - (my - imageDisplay.offsetY) * scaleFactor;
+      for (let pt of points) {
+        pt.anchor.x = mx - (mx - pt.anchor.x) * scaleFactor;
+        pt.anchor.y = my - (my - pt.anchor.y) * scaleFactor;
+        pt.handle1.x = mx - (mx - pt.handle1.x) * scaleFactor;
+        pt.handle1.y = my - (my - pt.handle1.y) * scaleFactor;
+        pt.handle2.x = mx - (mx - pt.handle2.x) * scaleFactor;
+        pt.handle2.y = my - (my - pt.handle2.y) * scaleFactor;
+      }
+      imageDisplay.scale = newScale;
+      draw();
+    });
+
+    function getMousePos(e) {
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top
+      };
+    }
+
+    function hitTest(pos) {
+      for (let i = 0; i < points.length; i++) {
+        let p = points[i];
+        if (dist(pos, p.anchor) < 8) return { index: i, type: 'anchor' };
+        if (dist(pos, p.handle1) < 6) return { index: i, type: 'handle1' };
+        if (dist(pos, p.handle2) < 6) return { index: i, type: 'handle2' };
+      }
+      return null;
+    }
+
+    function dist(p1, p2) {
+      return Math.hypot(p1.x - p2.x, p1.y - p2.y);
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (image) {
+        ctx.drawImage(
+          image,
+          imageDisplay.offsetX,
+          imageDisplay.offsetY,
+          image.width * imageDisplay.scale,
+          image.height * imageDisplay.scale
+        );
+      }
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#0f0';
+      ctx.beginPath();
+      for (let i = 0; i < points.length; i++) {
+        const p0 = points[i];
+        const p1 = points[(i + 1) % points.length];
+        if (i === 0) ctx.moveTo(p0.anchor.x, p0.anchor.y);
+        if (i < points.length - 1 || pathClosed) {
+          ctx.bezierCurveTo(
+            p0.handle2.x, p0.handle2.y,
+            p1.handle1.x, p1.handle1.y,
+            p1.anchor.x, p1.anchor.y
+          );
+        }
+      }
+      ctx.stroke();
+      for (let p of points) {
+        drawHandle(p.handle1, '#0ff');
+        drawHandle(p.handle2, '#0ff');
+        drawHandle(p.anchor, '#f00', 6);
+        drawLine(p.anchor, p.handle1);
+        drawLine(p.anchor, p.handle2);
+      }
+    }
+
+    function drawHandle(p, color, radius = 4) {
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    function drawLine(p1, p2) {
+      ctx.strokeStyle = '#555';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(p1.x, p1.y);
+      ctx.lineTo(p2.x, p2.y);
+      ctx.stroke();
+    }
+
+    function togglePathClosed() {
+      pathClosed = !pathClosed;
+      draw();
+    }
+
+    function undo() {
+      const action = history.pop();
+      if (!action) return;
+      if (action.action === 'add') {
+        points.splice(action.index, 1);
+      } else if (action.action === 'remove') {
+        points.splice(action.index, 0, action.point);
+      }
+      draw();
+    }
+
+    function exportMasked() {
+      if (!pathClosed || points.length < 3) {
+        alert("路径未闭合！");
+        return;
+      }
+
+      const tmp = document.createElement('canvas');
+      const tmpCtx = tmp.getContext('2d');
+      const boundingBox = getBoundingBox();
+
+      tmp.width = boundingBox.width;
+      tmp.height = boundingBox.height;
+      tmpCtx.translate(-boundingBox.x, -boundingBox.y);
+
+      tmpCtx.beginPath();
+      tmpCtx.moveTo(points[0].anchor.x, points[0].anchor.y);
+      for (let i = 1; i < points.length; i++) {
+        const prev = points[i - 1];
+        const curr = points[i];
+        tmpCtx.bezierCurveTo(
+          prev.handle2.x, prev.handle2.y,
+          curr.handle1.x, curr.handle1.y,
+          curr.anchor.x, curr.anchor.y
+        );
+      }
+      const last = points[points.length - 1];
+      const first = points[0];
+      tmpCtx.bezierCurveTo(
+        last.handle2.x, last.handle2.y,
+        first.handle1.x, first.handle1.y,
+        first.anchor.x, first.anchor.y
+      );
+      tmpCtx.closePath();
+      tmpCtx.clip();
+
+      tmpCtx.drawImage(
+        image,
+        imageDisplay.offsetX,
+        imageDisplay.offsetY,
+        image.width * imageDisplay.scale,
+        image.height * imageDisplay.scale
+      );
+
+      const link = document.createElement('a');
+      link.download = 'cutout.png';
+      link.href = tmp.toDataURL('image/png');
+      link.click();
+    }
+
+    function getBoundingBox() {
+      let minX = Infinity, minY = Infinity;
+      let maxX = -Infinity, maxY = -Infinity;
+
+      for (const p of points) {
+        const all = [p.anchor, p.handle1, p.handle2];
+        for (const pt of all) {
+          if (pt.x < minX) minX = pt.x;
+          if (pt.y < minY) minY = pt.y;
+          if (pt.x > maxX) maxX = pt.x;
+          if (pt.y > maxY) maxY = pt.y;
+        }
+      }
+
+      return {
+        x: Math.floor(minX),
+        y: Math.floor(minY),
+        width: Math.ceil(maxX - minX),
+        height: Math.ceil(maxY - minY)
+      };
+    }
+
+    function addControlPointBetween(e) {
+      const pos = getMousePos(e);
+      for (let i = 0; i < points.length - 1 + (pathClosed ? 1 : 0); i++) {
+        const a = points[i];
+        const b = points[(i + 1) % points.length];
+        const steps = 100;
+        for (let t = 0; t < 1; t += 1 / steps) {
+          const x = cubicBezier(a.anchor.x, a.handle2.x, b.handle1.x, b.anchor.x, t);
+          const y = cubicBezier(a.anchor.y, a.handle2.y, b.handle1.y, b.anchor.y, t);
+          if (Math.hypot(x - pos.x, y - pos.y) < 8) {
+            const newPoint = {
+              anchor: { x, y },
+              handle1: { x: x - 40, y },
+              handle2: { x: x + 40, y },
+              symmetric: true
+            };
+            points.splice(i + 1, 0, newPoint);
+            history.push({ action: 'add', point: newPoint, index: i + 1 });
+            draw();
+            return;
+          }
+        }
+      }
+    }
+
+    function cubicBezier(p0, p1, p2, p3, t) {
+      const c = 3 * (p1 - p0);
+      const b = 3 * (p2 - p1) - c;
+      const a = p3 - p0 - c - b;
+      return ((a * t + b) * t + c) * t + p0;
+    }
+  </script>
+</body>
+</html>
