@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>矢量图转换器</title>
+  <script src="https://unpkg.com/imagetracerjs/imagetracer_v1.2.6.js"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #f9fafc;
+      color: #333;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      flex-direction: column;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 900px;
+      padding: 30px;
+      background-color: #ffffff;
+      border-radius: 12px;
+      box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+      text-align: center;
+    }
+
+    h2 {
+      font-size: 28px;
+      color: #4a90e2;
+      margin-bottom: 20px;
+    }
+
+    .file-container {
+      position: relative;
+      margin-bottom: 20px;
+    }
+
+    /* 隐藏原生文件输入框 */
+    input[type="file"] {
+      display: none;
+    }
+
+    /* 定制化文件选择按钮 */
+    .file-button {
+      display: inline-block;
+      padding: 12px 24px;
+      background-color: #4a90e2;
+      color: white;
+      font-size: 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      text-align: center;
+      transition: background-color 0.3s ease;
+      width: auto;
+      margin-top: 10px;
+    }
+
+    .file-button:hover {
+      background-color: #357abd;
+    }
+
+    .spinner {
+      display: none;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #4a90e2;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    canvas {
+      display: none;
+    }
+
+    svg {
+      border: 1px solid #ddd;
+      width: 50%; /* 设置宽度为70% */
+      height: auto; /* 高度自适应 */
+      max-width: 100%; /* 确保不超过容器的最大宽度 */
+      border-radius: 8px;
+      margin-top: 20px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    #svgContainer {
+      text-align: center;
+      margin-top: 20px;
+    }
+
+    button {
+      padding: 12px 24px;
+      background-color: #4a90e2;
+      color: white;
+      font-size: 16px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      display: block;
+      width: 100%;
+      margin-top: 20px;
+      transition: all 0.3s ease;
+    }
+
+    button:hover {
+      background-color: #357abd;
+    }
+
+    .footer {
+      text-align: center;
+      margin-top: 30px;
+      color: #888;
+      font-size: 14px;
+    }
+
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <h2>矢量图转换器</h2>
+
+    <div class="file-container">
+      <!-- 定制文件选择按钮 -->
+      <label for="imageInput" class="file-button">选择图像</label>
+      <input type="file" id="imageInput" accept="image/*" />
+      <div class="spinner" id="spinner"></div>
+    </div>
+
+    <canvas id="canvas"></canvas>
+    <div id="svgContainer"></div>
+    <button id="downloadBtn" style="display:none;">下载 SVG</button>
+  </div>
+
+  <div class="footer">
+    <p>© 2024 矢量图转换器</p>
+  </div>
+
+  <script>
+    const imageInput = document.getElementById('imageInput');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const svgContainer = document.getElementById('svgContainer');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const spinner = document.getElementById('spinner');
+
+    imageInput.addEventListener('change', function () {
+      const file = this.files[0];
+      if (!file) return;
+
+      // 显示加载动画
+      spinner.style.display = 'block';
+      downloadBtn.style.display = 'none';
+      svgContainer.innerHTML = '';
+
+      const img = new Image();
+      const reader = new FileReader();
+
+      reader.onload = function (e) {
+        img.onload = function () {
+          canvas.width = img.width;
+          canvas.height = img.height;
+          ctx.drawImage(img, 0, 0);
+
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+          const options = {
+  scale: 1,               // 保持原始比例
+  numberofcolors: 128,     // 增加颜色数量，确保图像有足够的细节，但又不至于过于复杂
+  ltres: 0.005,           // 稍微增加低阈值，简化路径，使图像更柔和
+  qtres: 0.005,           // 增加高阈值，优化色块的过渡，使其更平滑
+  pathomit: 0,            // 不忽略任何路径，保留所有细节
+  roundcoords: 3,         // 将坐标圆整到 3 位小数，减少锯齿现象，确保路径更加平滑
+  blurradius: 1,          // 启用适度模糊，使图像的边缘更柔和
+  blurdelta: 1,           // 增加模糊差值，增强过渡效果，但保持细节
+  desc: false,            // 不显示描述信息，保持简洁
+  viewbox: true           // 启用 SVG 的视图框架，确保图像适应不同尺寸的显示
+};
+
+
+
+
+          const svgString = ImageTracer.imagedataToSVG(imageData, options);
+          svgContainer.innerHTML = svgString;
+
+          // 设置 SVG 图像尺寸
+          const svgElement = svgContainer.querySelector('svg');
+          if (svgElement) {
+            svgElement.setAttribute('width', '200');
+            svgElement.setAttribute('height', '200');
+          }
+
+          // 隐藏加载动画并显示下载按钮
+          spinner.style.display = 'none';
+          downloadBtn.style.display = 'inline-block';
+          downloadBtn.onclick = () => {
+            const blob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = "high_precision_vector.svg";
+            a.click();
+            URL.revokeObjectURL(url);
+          };
+        };
+        img.src = e.target.result;
+      };
+
+      reader.readAsDataURL(file);
+    });
+  </script>
+
+</body>
+</html>
