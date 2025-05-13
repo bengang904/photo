@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>图像文字识别</title>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Arial', sans-serif;
+      background-color: #f4f7fc;
+      color: #333;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      background-color: #fff;
+      border-radius: 15px;
+      box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+      padding: 30px;
+      width: 100%;
+      max-width: 600px;
+    }
+
+    h1 {
+      text-align: center;
+      font-size: 2em;
+      color: #333;
+      margin-bottom: 20px;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    label {
+      display: block;
+      font-size: 1.1em;
+      margin-bottom: 10px;
+      color: #555;
+    }
+
+    select, input[type="file"] {
+      width: 100%;
+      padding: 10px;
+      font-size: 1em;
+      border-radius: 10px;
+      border: 1px solid #ddd;
+      background-color: #f9f9f9;
+      color: #555;
+      transition: border-color 0.3s;
+    }
+
+    select:focus, input[type="file"]:focus {
+      border-color: #FFA500;
+      outline: none;
+    }
+
+    button {
+      background-color: #FFA500; /* 橙色按钮 */
+      color: white;
+      font-size: 1.1em;
+      padding: 15px;
+      width: 100%;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+      margin-top: 20px;
+    }
+
+    button:hover {
+      background-color: #ff8c00; /* 深橙色 */
+    }
+
+    #output {
+      margin-top: 20px;
+      padding: 20px;
+      background-color: #f9f9f9;
+      border-radius: 10px;
+      border: 1px solid #ddd;
+      min-height: 50px;
+      color: #333;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      font-size: 1em;
+      font-family: 'Courier New', Courier, monospace;
+    }
+
+    .language-select, .file-input {
+      margin-bottom: 10px;
+    }
+
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>图像文字识别</h1>
+    <div class="form-group language-select">
+      <label for="languageSelect">选择语言 (如果需要特定语言识别):</label>
+      <select id="languageSelect">
+        <option value="auto">自动检测（较慢）</option>
+        <option value="chi_sim">简体中文</option>
+        <option value="chi_tra">繁体中文</option>
+        <option value="deu">德语</option>
+        <option value="fra">法语</option>
+        <option value="spa">西班牙语</option>
+        <option value="ita">意大利语</option>
+        <option value="jpn">日语</option>
+        <option value="kor">韩语</option>
+        <option value="rus">俄语</option>
+        <option value="por">葡萄牙语</option>
+        <option value="ara">阿拉伯语</option>
+      </select>
+    </div>
+
+    <div class="form-group file-input">
+      <label for="fileInput">上传图片:</label>
+      <input type="file" id="fileInput" accept="image/*">
+    </div>
+
+    <button id="recognizeBtn">开始识别</button>
+
+    <div id="output"></div>
+  </div>
+
+  <script>
+    document.getElementById('recognizeBtn').addEventListener('click', function() {
+      const file = document.getElementById('fileInput').files[0];
+      const selectedLanguage = document.getElementById('languageSelect').value;
+
+      if (file) {
+        // 显示识别进度
+        document.getElementById('output').textContent = "正在识别，请稍等...";
+
+        // 如果用户选择了自动识别，则使用多语言模型组合
+        let langModel = 'eng+chi_sim+chi_tra+deu+fra+spa+ita+jpn+kor+rus+por+ara'; // 默认复合语言模型
+        if (selectedLanguage !== 'auto') {
+          langModel = selectedLanguage; // 如果选择了特定语言，则使用该语言模型
+        }
+
+        Tesseract.recognize(
+          file,
+          langModel,
+          {
+            logger: (m) => console.log(m),  // 打印进度信息
+          }
+        ).then(({ data: { text } }) => {
+          document.getElementById('output').textContent = text || "未识别到任何文字";
+        }).catch(error => {
+          document.getElementById('output').textContent = "识别失败：" + error.message;
+        });
+      } else {
+        document.getElementById('output').textContent = "请先上传一张图片！";
+      }
+    });
+  </script>
+</body>
+</html>
